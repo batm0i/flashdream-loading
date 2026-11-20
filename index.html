@@ -205,4 +205,23 @@ body{font-family:'IM Fell English',serif;color:#fff4dc}
   showTip(); render();
 })();
 </script>
+<!-- Musique de chargement : « FlashDream se réveille ». OGG pour l'ancien navigateur de GMod (Awesomium, branche par défaut),
+     MP3 pour Chromium (branche x86-64). Démarre seule, en boucle, avec une montée douce du volume. -->
+<audio id="music" autoplay loop preload="auto">
+ <source src="musique.ogg" type="audio/ogg">
+ <source src="musique.mp3" type="audio/mpeg">
+</audio>
+<script>
+(function () {
+  var a = document.getElementById('music'); if (!a) { return; }
+  var target = 0.35, v = 0;
+  try { a.volume = 0; } catch (e) {}
+  function start() { try { var p = a.play(); if (p && p['catch']) { p['catch'](function () {}); } } catch (e) {} }
+  start();
+  // si le lancement automatique est bloqué, la musique part au premier mouvement de souris ou clic
+  document.addEventListener('mousemove', function once() { start(); document.removeEventListener('mousemove', once); });
+  document.addEventListener('mousedown', start);
+  var fade = setInterval(function () { v = Math.min(target, v + 0.01); try { a.volume = v; } catch (e) {} if (v >= target) { clearInterval(fade); } }, 80);
+})();
+</script>
 </body></html>
