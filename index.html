@@ -87,6 +87,18 @@ body{font-family:'IM Fell English',serif;color:#fff4dc}
 @-webkit-keyframes sway{0%,100%{-webkit-transform:rotate(-1.2deg)}50%{-webkit-transform:rotate(1.2deg)}}@keyframes sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
 @-webkit-keyframes bob{0%,100%{-webkit-transform:translateY(0) rotate(-3deg)}50%{-webkit-transform:translateY(-.6rem) rotate(3deg)}}@keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-.6rem) rotate(3deg)}}
 @-webkit-keyframes tipin{from{opacity:0;-webkit-transform:translateY(.8rem)}to{opacity:1;-webkit-transform:translateY(0)}}@keyframes tipin{from{opacity:0;transform:translateY(.8rem)}to{opacity:1;transform:translateY(0)}}
+
+/* Réglage du volume de la musique */
+#vol{right:2.2rem;top:2.2rem;z-index:50;display:-webkit-box;display:flex;-webkit-box-align:center;align-items:center;
+ padding:0.9rem 1.4rem;border-radius:3rem;background:rgba(4,26,43,0.72);border:0.25rem solid #ffd23f;
+ -webkit-box-shadow:0 0.4rem 1.2rem rgba(0,0,0,0.45);box-shadow:0 0.4rem 1.2rem rgba(0,0,0,0.45);
+ -webkit-user-select:none;user-select:none;cursor:default}
+#volbtn{width:3.4rem;height:3.4rem;line-height:3.4rem;text-align:center;font-size:2.4rem;color:#ffd23f;cursor:pointer;margin-right:1rem}
+#voltrack{position:relative;width:16rem;height:1rem;border-radius:1rem;background:#6b4320;cursor:pointer}
+#volfill{position:absolute;left:0;top:0;bottom:0;border-radius:1rem;background:#ffd23f}
+#volknob{position:absolute;top:50%;width:2.4rem;height:2.4rem;margin:-1.2rem 0 0 -1.2rem;border-radius:50%;
+ background:#fff4dc;border:0.3rem solid #e5673a}
+#volpct{width:5.5rem;text-align:right;font-size:2rem;color:#fff4dc;margin-left:1rem}
 </style></head>
 <body>
 <div id="sky" class="abs"></div>
@@ -205,6 +217,11 @@ body{font-family:'IM Fell English',serif;color:#fff4dc}
   showTip(); render();
 })();
 </script>
+<div id="vol" class="abs" title="Volume de la musique">
+ <div id="volbtn" class="bang">&#9835;</div>
+ <div id="voltrack"><div id="volfill"></div><div id="volknob"></div></div>
+ <div id="volpct" class="bang">35%</div>
+</div>
 <!-- Musique de chargement : « Flashdream » (2026-11-20, nouveaux noms de fichiers pour éviter l'ancienne en cache).
      OGG pour l'ancien navigateur de GMod (Awesomium, branche par défaut), MP3 pour Chromium (branche x86-64).
      Démarre seule, en boucle, avec une montée douce du volume. -->
@@ -215,14 +232,56 @@ body{font-family:'IM Fell English',serif;color:#fff4dc}
 <script>
 (function () {
   var a = document.getElementById('music'); if (!a) { return; }
-  var target = 0.35, v = 0;
+  var $ = function (id) { return document.getElementById(id); };
+  // volume choisi par le joueur (gardé d'une connexion à l'autre quand le navigateur le permet)
+  var target = 0.35, muted = false, v = 0, fading = true;
+  try { var sv = window.localStorage && localStorage.getItem('fd_music_volume'); if (sv !== null && sv !== undefined && sv !== '' && !isNaN(Number(sv))) { target = Math.max(0, Math.min(1, Number(sv))); } } catch (e) {}
+  try { muted = window.localStorage && localStorage.getItem('fd_music_muted') === '1'; } catch (e) {}
+  function save() {
+    try { localStorage.setItem('fd_music_volume', String(target)); localStorage.setItem('fd_music_muted', muted ? '1' : '0'); } catch (e) {}
+  }
+  function apply() {
+    var real = muted ? 0 : (fading ? Math.min(v, target) : target);
+    try { a.volume = real; } catch (e) {}
+    var shown = muted ? 0 : target;
+    $('volfill').style.width = (shown * 100) + '%';
+    $('volknob').style.left = (shown * 100) + '%';
+    $('volpct').textContent = Math.round(shown * 100) + '%';
+    $('volbtn').innerHTML = (muted || target === 0) ? '&#10005;' : '&#9835;';
+  }
   try { a.volume = 0; } catch (e) {}
   function start() { try { var p = a.play(); if (p && p['catch']) { p['catch'](function () {}); } } catch (e) {} }
   start();
   // si le lancement automatique est bloqué, la musique part au premier mouvement de souris ou clic
   document.addEventListener('mousemove', function once() { start(); document.removeEventListener('mousemove', once); });
   document.addEventListener('mousedown', start);
-  var fade = setInterval(function () { v = Math.min(target, v + 0.01); try { a.volume = v; } catch (e) {} if (v >= target) { clearInterval(fade); } }, 80);
+  // montée douce jusqu'au volume choisi
+  var fade = setInterval(function () { v = Math.min(1, v + 0.01); if (v >= target) { fading = false; clearInterval(fade); } apply(); }, 80);
+
+  // barre de volume : cliquer ou glisser
+  var track = $('voltrack'), drag = false;
+  function setFromX(x) {
+    var r = track.getBoundingClientRect();
+    target = Math.max(0, Math.min(1, (x - r.left) / (r.right - r.left)));
+    target = Math.round(target * 100) / 100;
+    muted = false; fading = false; apply(); save();
+  }
+  track.addEventListener('mousedown', function (e) { drag = true; setFromX(e.clientX); e.preventDefault(); });
+  document.addEventListener('mousemove', function (e) { if (drag) { setFromX(e.clientX); } });
+  document.addEventListener('mouseup', function () { if (drag) { drag = false; save(); } });
+  // molette sur le réglage : +/- 5 %
+  function wheel(e) {
+    var d = e.deltaY !== undefined ? -e.deltaY : (e.wheelDelta || 0);
+    target = Math.max(0, Math.min(1, Math.round((target + (d > 0 ? 0.05 : -0.05)) * 100) / 100));
+    muted = false; fading = false; apply(); save(); e.preventDefault();
+  }
+  $('vol').addEventListener('wheel', wheel); $('vol').addEventListener('mousewheel', wheel);
+  // bouton : couper / remettre le son
+  $('volbtn').addEventListener('mousedown', function (e) {
+    muted = !muted; if (!muted && target === 0) { target = 0.35; }
+    fading = false; apply(); save(); e.stopPropagation();
+  });
+  apply();
 })();
 </script>
 </body></html>
